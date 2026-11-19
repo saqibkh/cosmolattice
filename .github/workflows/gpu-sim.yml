@@ -84,12 +84,22 @@ jobs:
       - name: Build
         run: cmake --build build --target cosmolattice -j3
 
-      - name: Run lphi4
+      - name: Build a CPU reference
+        run: |
+          cmake -S . -B build-cpu \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DNOTHREADING=ON -DNATIVE=OFF -DMODEL=lphi4
+          cmake --build build-cpu --target cosmolattice -j3
+
+      - name: Run lphi4 on the CPU and on the device
         run: |
           set -o pipefail
-          mkdir -p run
-          cd run
-          vgpu run ../build/lphi4 input=../models/parameter-files/lphi4.in \
-            N=16 tMax=0.1 tOutputFreq=0.02 tOutputInfreq=0.05 \
-            outputfile=./ 2>&1 | tee ../lphi4.log
-          ls -la
+          export KOKKOS_PRINT_CONFIGURATION=1
+          ARGS="input=${PWD}/models/parameter-files/lphi4.in N=16 baseSeed=12345 tMax=0.2 tOutputFreq=0.05 tOutputInfreq=0.1"
+          mkdir -p run-cpu run-gpu
+          (cd run-cpu && ../build-cpu/lphi4 $ARGS outputfile=./ 2>&1 | tee ../cpu.log)
+          (cd run-gpu && vgpu run ../build/lphi4 $ARGS outputfile=./ 2>&1 | tee ../gpu.log)
+          for f in average_energies.txt average_energy_conservation.txt; do
+            echo "== cpu $f"; cat run-cpu/$f; echo "== gpu $f"; cat run-gpu/$f
+          done
