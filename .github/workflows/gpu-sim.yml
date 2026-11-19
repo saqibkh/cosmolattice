@@ -112,7 +112,7 @@ jobs:
             echo "The simulator or CUDA reported an error."; exit 1
           fi
           mkdir -p run-nodevice
-          if (cd run-nodevice && ../build/lphi4 input=${PWD}/models/parameter-files/lphi4.in N=16 tMax=0.02 outputfile=./ > ../nodevice.log 2>&1); then
+          if (cd run-nodevice && ../build/lphi4 input=../models/parameter-files/lphi4.in N=16 tMax=0.02 outputfile=./ > ../nodevice.log 2>&1); then
             echo "The CUDA build ran without the simulated device."; exit 1
           fi
           python3 - run-cpu run-gpu <<'PY'
