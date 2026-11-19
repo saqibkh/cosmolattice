@@ -59,18 +59,27 @@ jobs:
 
       # The simulator runs PTX only and needs a shared CUDA runtime, so the
       # architecture is set to compute_90 (via Hopper 9.0) and cudart shared.
+      - name: Get the Kokkos nvcc wrapper
+        run: |
+          curl -sL https://github.com/kokkos/kokkos/releases/download/5.1.1/kokkos-5.1.1.tar.gz | tar -xz
+          echo "NVCC_WRAPPER=${PWD}/kokkos-5.1.1/bin/nvcc_wrapper" >> "$GITHUB_ENV"
+          echo "NVCC_WRAPPER_DEFAULT_COMPILER=g++" >> "$GITHUB_ENV"
+
       - name: Configure
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=/usr/local/cuda-13.0/bin/nvcc \
-            -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13.0/bin/nvcc \
+            -DCMAKE_CXX_COMPILER="${NVCC_WRAPPER}" \
             -DCMAKE_CXX_FLAGS="-cudart shared" \
             -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared \
             -DCUDA=ON \
             -DNATIVE=OFF \
             -DKokkos_ARCH_HOPPER90=ON \
             -DMODEL=lphi4
+
+      - name: Show the CMake error log
+        if: failure()
+        run: tail -n 80 build/CMakeFiles/CMakeError.log build/CMakeFiles/CMakeConfigureLog.yaml || true
 
       - name: Build
         run: cmake --build build --target cosmolattice -j3
