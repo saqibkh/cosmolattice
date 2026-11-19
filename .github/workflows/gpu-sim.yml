@@ -95,11 +95,10 @@ jobs:
       - name: Run lphi4 on the CPU and on the device
         run: |
           set -o pipefail
-          export KOKKOS_PRINT_CONFIGURATION=1
           ARGS="input=${PWD}/models/parameter-files/lphi4.in N=16 baseSeed=12345 tMax=0.2 tOutputFreq=0.05 tOutputInfreq=0.1"
           mkdir -p run-cpu run-gpu
           (cd run-cpu && ../build-cpu/lphi4 $ARGS outputfile=./ 2>&1 | tee ../cpu.log)
-          (cd run-gpu && vgpu run ../build/lphi4 $ARGS outputfile=./ 2>&1 | tee ../gpu.log)
-          for f in average_energies.txt average_energy_conservation.txt; do
-            echo "== cpu $f"; cat run-cpu/$f; echo "== gpu $f"; cat run-gpu/$f
-          done
+          (cd run-gpu && VGPU_TRACE_LAUNCHES=1 vgpu run ../build/lphi4 $ARGS outputfile=./ 2>&1 | tee ../gpu.log)
+
+      - name: Probe launch trace
+        run: grep -i -m5 -E "launch|kernel" gpu.log | cut -c1-200; grep -c -i -E "launch|kernel" gpu.log || true
