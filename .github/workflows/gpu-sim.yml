@@ -1,0 +1,86 @@
+name: GPU Simulator
+
+# Optional, non-required check. The hosted runners have no GPU, so this builds
+# the lphi4 model with the CUDA backend (Kokkos and KokkosFFT) and runs it for
+# a few steps on a simulated NVIDIA H100
+# (https://github.com/pantheongpu/pantheonsim). A simulator cannot reproduce
+# hardware-specific behavior or timing, so it complements real-GPU testing and
+# does not replace it.
+
+on:
+  push:
+    branches: [ verify-gpu-sim ]
+  workflow_dispatch:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - "include/**"
+      - "models/**"
+      - "source/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/gpu-sim.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lphi4:
+    name: lphi4 (CUDA 13.0 and simulated H100)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      # library-path is disabled so that the toolkit's cuFFT is the one that
+      # KokkosFFT links against and loads.
+      - name: Set up the simulated GPU and CUDA toolkit
+        uses: pantheongpu/setup-pantheonsim@deff5781e8adfd83dec98dd5242dcbc96a564773 # v0.1.10
+        with:
+          gpu: nvidia/h100
+          cuda-toolkit: "13.0"
+          library-path: 'false'
+
+      - name: Install FFTW
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev
+
+      # The simulator runs PTX only and needs a shared CUDA runtime, so the
+      # architecture is set to compute_90 (via Hopper 9.0) and cudart shared.
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=/usr/local/cuda-13.0/bin/nvcc \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13.0/bin/nvcc \
+            -DCMAKE_CXX_FLAGS="-cudart shared" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared \
+            -DCUDA=ON \
+            -DNATIVE=OFF \
+            -DKokkos_ARCH_HOPPER90=ON \
+            -DMODEL=lphi4
+
+      - name: Build
+        run: cmake --build build --target cosmolattice -j3
+
+      - name: Run lphi4
+        run: |
+          set -o pipefail
+          mkdir -p run
+          cd run
+          vgpu run ../build/lphi4 input=../models/parameter-files/lphi4.in \
+            N=16 tMax=0.1 tOutputFreq=0.02 tOutputInfreq=0.05 \
+            outputfile=./ 2>&1 | tee ../lphi4.log
+          ls -la
